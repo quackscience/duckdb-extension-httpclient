@@ -1,6 +1,8 @@
 #define DUCKDB_EXTENSION_MAIN
 #include "http_client_extension.hpp"
 #include "duckdb.hpp"
+#include "duckdb/common/types.hpp"
+#include "duckdb/common/vector_operations/generic_executor.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/extension_util.hpp"
 #include "duckdb/common/atomic.hpp"
@@ -118,14 +120,18 @@ static void HTTPGetRequestFunction(DataChunk &args, ExpressionState &state, Vect
 static void HTTPPostRequestFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     D_ASSERT(args.data.size() == 3);
 
+    using STRING_TYPE = PrimitiveType<string_t>;
+    using LENTRY_TYPE = PrimitiveType<list_entry_t>;
+
     auto &url_vector = args.data[0];
     auto &headers_vector = args.data[1];
+    auto &headers_entry = ListVector::GetEntry(headers_vector);
     auto &body_vector = args.data[2];
 
-    TernaryExecutor::Execute<string_t, string_t, string_t, string_t>(
+    GenericExecutor::ExecuteTernary<STRING_TYPE, LENTRY_TYPE, STRING_TYPE, STRING_TYPE>(
         url_vector, headers_vector, body_vector, result, args.size(),
-        [&](string_t url, string_t headers, string_t body) {
-            std::string url_str = url.GetString();
+        [&](STRING_TYPE url, LENTRY_TYPE headers, STRING_TYPE body) {
+            std::string url_str = url.val.GetString();
 
             // Use helper to setup client and parse URL
             auto client_and_path = SetupHttpClient(url_str);
@@ -134,24 +140,24 @@ static void HTTPPostRequestFunction(DataChunk &args, ExpressionState &state, Vec
 
             // Prepare headers
             duckdb_httplib_openssl::Headers header_map;
-            std::istringstream header_stream(headers.GetString());
-            std::string header;
-            while (std::getline(header_stream, header)) {
-                size_t colon_pos = header.find(':');
-                if (colon_pos != std::string::npos) {
-                    std::string key = header.substr(0, colon_pos);
-                    std::string value = header.substr(colon_pos + 1);
-                    // Trim leading and trailing whitespace
-                    key.erase(0, key.find_first_not_of(" \t"));
-                    key.erase(key.find_last_not_of(" \t") + 1);
-                    value.erase(0, value.find_first_not_of(" \t"));
-                    value.erase(value.find_last_not_of(" \t") + 1);
-                    header_map.emplace(key, value);
+            auto header_list = headers.val;
+            for (idx_t i = header_list.offset; i < header_list.offset + header_list.length; i++) {
+                const auto &child_value = headers_entry.GetValue(i);
+
+                Vector tmp(child_value);
+                auto &children = StructVector::GetEntries(tmp);
+
+                if (children.size() == 2) {
+                    auto name = FlatVector::GetData<string_t>(*children[0]);
+                    auto data = FlatVector::GetData<string_t>(*children[1]);
+                    std::string key = name->GetString();
+                    std::string val = data->GetString();
+                    header_map.emplace(key, val);
                 }
             }
 
             // Make the POST request with headers and body
-            auto res = client.Post(path.c_str(), header_map, body.GetString(), "application/json");
+            auto res = client.Post(path.c_str(), header_map, body.val.GetString(), "application/json");
             if (res) {
                 if (res->status == 200) {
                     return StringVector::AddString(result, res->body);
@@ -175,7 +181,7 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     ScalarFunctionSet http_post("http_post");
     http_post.AddFunction(ScalarFunction(
-        {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+        {LogicalType::VARCHAR, LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR), LogicalType::JSON()},
         LogicalType::VARCHAR, HTTPPostRequestFunction));
     ExtensionUtil::RegisterFunction(instance, http_post);
 }
