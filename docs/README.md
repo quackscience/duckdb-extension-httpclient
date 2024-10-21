@@ -46,8 +46,9 @@ WITH __input AS (
           'https://httpbin.org/delay/0',
           headers => MAP {
             'accept': 'application/json',
-          }::VARCHAR,
-          params => MAP {}::VARCHAR
+          },
+          params => MAP {
+          }
        ) AS data
     ),
     __features AS (
