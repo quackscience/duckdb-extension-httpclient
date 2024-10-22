@@ -5,6 +5,12 @@ This very experimental extension spawns an HTTP Client from within DuckDB resolv
 
 > Experimental: USE AT YOUR OWN RISK!
 
+### 📦 Installation
+```sql
+INSTALL http_client FROM community;
+LOAD http_client;
+```
+
 ### Functions
 - `http_get(url)`
 - `http_post(url, headers, params)`
