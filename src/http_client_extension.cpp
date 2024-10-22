@@ -44,7 +44,44 @@ static std::pair<duckdb_httplib_openssl::Client, std::string> SetupHttpClient(co
     return std::make_pair(std::move(client), path);
 }
 
-static void HandleHttpError(const duckdb_httplib_openssl::Result &res, const std::string &request_type) {
+// Helper function to escape chars of a string representing a JSON object
+std::string escape_json(const std::string &input) {
+    std::ostringstream output;
+
+    for (auto c = input.cbegin(); c != input.cend(); c++) {
+        switch (*c) {
+        case '"' : output << "\\\""; break;
+        case '\\': output << "\\\\"; break;
+        case '\b': output << "\\b"; break;
+        case '\f': output << "\\f"; break;
+        case '\n': output << "\\n"; break;
+        case '\r': output << "\\r"; break;
+        case '\t': output << "\\t"; break;
+        default:
+            if ('\x00' <= *c && *c <= '\x1f') {
+                output << "\\u"
+                       << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(*c);
+            } else {
+                output << *c;
+            }
+        }
+    }
+    return output.str();
+}
+
+// Helper function to create a Response object as a string
+static std::string GetJsonResponse(int status, const std::string &reason, const std::string &body) {
+    std::string response = StringUtil::Format(
+        "{ \"status\": %i, \"reason\": \"%s\", \"body\": \"%s\" }",
+        status,
+        escape_json(reason),
+        escape_json(body)
+    );
+    return response;
+}
+
+// Helper function to return the description of one HTTP error.
+static std::string GetHttpErrorMessage(const duckdb_httplib_openssl::Result &res, const std::string &request_type) {
     std::string err_message = "HTTP " + request_type + " request failed. ";
 
     switch (res.error()) {
@@ -85,7 +122,7 @@ static void HandleHttpError(const duckdb_httplib_openssl::Result &res, const std
             err_message += "Unknown error.";
             break;
     }
-    throw std::runtime_error(err_message);
+    return err_message;
 }
 
 
@@ -103,17 +140,12 @@ static void HTTPGetRequestFunction(DataChunk &args, ExpressionState &state, Vect
         // Make the GET request
         auto res = client.Get(path.c_str());
         if (res) {
-            if (res->status == 200) {
-                return StringVector::AddString(result, res->body);
-            } else {
-                throw std::runtime_error("HTTP GET error: " + std::to_string(res->status) + " - " + res->reason);
-            }
+            std::string response = GetJsonResponse(res->status, res->reason, res->body);
+            return StringVector::AddString(result, response);
         } else {
-            // Handle errors
-            HandleHttpError(res, "GET");
+            std::string response = GetJsonResponse(-1, GetHttpErrorMessage(res, "POST"), "");
+            return StringVector::AddString(result, response);
         }
-        // Ensure a return value in case of an error
-        return string_t();
     });
 }
 
@@ -159,30 +191,25 @@ static void HTTPPostRequestFunction(DataChunk &args, ExpressionState &state, Vec
             // Make the POST request with headers and body
             auto res = client.Post(path.c_str(), header_map, body.val.GetString(), "application/json");
             if (res) {
-                if (res->status == 200) {
-                    return StringVector::AddString(result, res->body);
-                } else {
-                    throw std::runtime_error("HTTP POST error: " + std::to_string(res->status) + " - " + res->reason);
-                }
+                std::string response = GetJsonResponse(res->status, res->reason, res->body);
+                return StringVector::AddString(result, response);
             } else {
-                // Handle errors
-                HandleHttpError(res, "POST");
+                std::string response = GetJsonResponse(-1, GetHttpErrorMessage(res, "POST"), "");
+                return StringVector::AddString(result, response);
             }
-            // Ensure a return value in case of an error
-            return string_t();
         });
 }
 
 
 static void LoadInternal(DatabaseInstance &instance) {
     ScalarFunctionSet http_get("http_get");
-    http_get.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::VARCHAR, HTTPGetRequestFunction));
+    http_get.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::JSON(), HTTPGetRequestFunction));
     ExtensionUtil::RegisterFunction(instance, http_get);
 
     ScalarFunctionSet http_post("http_post");
     http_post.AddFunction(ScalarFunction(
         {LogicalType::VARCHAR, LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR), LogicalType::JSON()},
-        LogicalType::VARCHAR, HTTPPostRequestFunction));
+        LogicalType::JSON(), HTTPPostRequestFunction));
     ExtensionUtil::RegisterFunction(instance, http_post);
 }
 
