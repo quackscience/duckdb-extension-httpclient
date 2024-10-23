@@ -143,7 +143,7 @@ static void HTTPGetRequestFunction(DataChunk &args, ExpressionState &state, Vect
             std::string response = GetJsonResponse(res->status, res->reason, res->body);
             return StringVector::AddString(result, response);
         } else {
-            std::string response = GetJsonResponse(-1, GetHttpErrorMessage(res, "POST"), "");
+            std::string response = GetJsonResponse(-1, GetHttpErrorMessage(res, "GET"), "");
             return StringVector::AddString(result, response);
         }
     });
