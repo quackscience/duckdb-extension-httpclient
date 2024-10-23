@@ -19,62 +19,68 @@ LOAD http_client;
 #### GET
 ```sql
 D WITH __input AS (
-      SELECT
-        http_get(
-          'https://httpbin.org/delay/0'
-       ) AS data
-    ),
-    __features AS (
-      SELECT
-        unnest( from_json((data::JSON)->'headers', '{"Host": "VARCHAR"}') )
-        AS features
-      FROM
-        __input
-    )
     SELECT
-      __features.Host AS host,
+      http_get(
+          'https://httpbin.org/delay/0'
+      ) AS res
+  ),
+  __response AS (
+    SELECT
+      (res->>'status')::INT AS status,
+      (res->>'reason') AS reason,
+      unnest( from_json(((res->>'body')::JSON)->'headers', '{"Host": "VARCHAR"}') ) AS features
     FROM
-      __features
-    ;
-┌─────────────┐
-│    host     │
-│   varchar   │
-├─────────────┤
-│ httpbin.org │
-└─────────────┘
+      __input
+  )
+  SELECT
+    __response.status,
+    __response.reason,
+    __response.Host AS host,
+  FROM
+    __response
+  ;
+┌────────┬─────────┬─────────────┐
+│ status │ reason  │    host     │
+│ int32  │ varchar │   varchar   │
+├────────┼─────────┼─────────────┤
+│    200 │ OK      │ httpbin.org │
+└────────┴─────────┴─────────────┘
 ```
 
 #### POST
 ```sql
-WITH __input AS (
-      SELECT
-        http_post(
+D WITH __input AS (
+    SELECT
+      http_post(
           'https://httpbin.org/delay/0',
           headers => MAP {
             'accept': 'application/json',
           },
           params => MAP {
           }
-       ) AS data
-    ),
-    __features AS (
-      SELECT
-        unnest( from_json((data::JSON)->'headers', '{"Host": "VARCHAR"}') )
-        AS features
-      FROM
-        __input
-    )
+      ) AS res
+  ),
+  __response AS (
     SELECT
-      __features.Host AS host,
+      (res->>'status')::INT AS status,
+      (res->>'reason') AS reason,
+      unnest( from_json(((res->>'body')::JSON)->'headers', '{"Host": "VARCHAR"}') ) AS features
     FROM
-      __features
-    ;
-┌─────────────┐
-│    host     │
-│   varchar   │
-├─────────────┤
-│ httpbin.org │
-└─────────────┘
+      __input
+  )
+  SELECT
+    __response.status,
+    __response.reason,
+    __response.Host AS host,
+  FROM
+    __response
+  ;
+┌────────┬─────────┬─────────────┐
+│ status │ reason  │    host     │
+│ int32  │ varchar │   varchar   │
+├────────┼─────────┼─────────────┤
+│    200 │ OK      │ httpbin.org │
+└────────┴─────────┴─────────────┘
 ```
 
 #### Full Example w/ spatial data
@@ -88,11 +94,11 @@ D WITH __input AS (
     SELECT
       http_get(
         'https://earth-search.aws.element84.com/v0/search')
-      AS data
+      AS res
   ),
   __features AS (
     SELECT
-      unnest( from_json((data::JSON)->'features', '["json"]') )
+      unnest( from_json(((res->>'body')::JSON)->'features', '["json"]') )
       AS features
     FROM
       __input
