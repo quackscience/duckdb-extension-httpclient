@@ -39,6 +39,38 @@ FROM
 ----
 200	OK	httpbin.org
 
+# Confirm the GET extension works with headers and params
+query III
+WITH __input AS (
+  SELECT
+    http_get(
+        'https://httpbin.org/delay/0',
+        headers => MAP {
+          'accept': 'application/json',
+        },
+        params => MAP {
+          'limit': 10
+        }
+    ) AS res
+),
+__response AS (
+  SELECT
+    (res->>'status')::INT AS status,
+    (res->>'reason') AS reason,
+    unnest( from_json(((res->>'body')::JSON)->'headers', '{"Host": "VARCHAR"}') ) AS features
+  FROM
+    __input
+)
+SELECT
+  __response.status,
+  __response.reason,
+  __response.Host AS host
+FROM
+  __response
+;
+----
+200	OK	httpbin.org
+
 # Confirm the POST extension works
 query III
 WITH __input AS (
