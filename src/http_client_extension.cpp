@@ -10,6 +10,7 @@
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
+#define CPPHTTPLIB_ZLIB_SUPPORT
 #include "httplib.hpp"
 
 #include <string>
