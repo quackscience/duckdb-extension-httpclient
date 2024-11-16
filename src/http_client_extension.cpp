@@ -9,6 +9,10 @@
 #include "duckdb/common/exception/http_exception.hpp"
 #include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
 
+#ifdef USE_ZLIB
+#define CPPHTTPLIB_ZLIB_SUPPORT
+#endif
+
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib.hpp"
 
