@@ -23,7 +23,7 @@ namespace duckdb {
 
 // Helper function to parse URL and setup client
 static std::pair<duckdb_httplib_openssl::Client, std::string> SetupHttpClient(const std::string &url) {
-    std::string scheme, domain, path;
+    std::string scheme, domain, path, client_url;
     size_t pos = url.find("://");
     std::string mod_url = url;
     if (pos != std::string::npos) {
@@ -40,8 +40,15 @@ static std::pair<duckdb_httplib_openssl::Client, std::string> SetupHttpClient(co
         path = "/";
     }
 
+    // Construct client url with https if specified
+    if (scheme == "https") {
+        client_url = scheme + "://" + domain;
+    } else {
+        client_url = domain;
+    }
+
     // Create client and set a reasonable timeout (e.g., 10 seconds)
-    duckdb_httplib_openssl::Client client(domain.c_str());
+    duckdb_httplib_openssl::Client client(client_url);
     client.set_read_timeout(10, 0);  // 10 seconds
     client.set_follow_location(true); // Follow redirects
 
