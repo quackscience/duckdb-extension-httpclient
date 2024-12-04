@@ -40,8 +40,8 @@ static std::pair<duckdb_httplib_openssl::Client, std::string> SetupHttpClient(co
         path = "/";
     }
 
-    // Construct client url with https if specified
-    if (scheme == "https") {
+    // Construct client url with scheme if specified
+    if (scheme.length() > 0) {
         client_url = scheme + "://" + domain;
     } else {
         client_url = domain;
