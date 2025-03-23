@@ -134,3 +134,68 @@ FROM
 ;
 ----
 S2A_56LPN_20210930_0_L2A
+
+# Confirm the POST function with form request works
+query III
+WITH __input AS (
+  SELECT
+    http_post_form(
+        'https://httpbin.org/delay/0',
+        headers => MAP {
+          'accept': 'application/json',
+        },
+        params => MAP {
+          'limit': 10
+        }
+    ) AS res
+),
+__response AS (
+  SELECT
+    (res->>'status')::INT AS status,
+    (res->>'reason') AS reason,
+    unnest( from_json(((res->>'body')::JSON)->'headers', '{"Host": "VARCHAR"}') ) AS features
+  FROM
+    __input
+)
+SELECT
+  __response.status,
+  __response.reason,
+  __response.Host AS host
+FROM
+  __response
+;
+----
+200	OK	httpbin.org
+
+# Confirm the POST function with form encoding transmits a single value
+query III
+WITH __input AS (
+  SELECT
+    http_post_form(
+        'https://httpbin.org/delay/0',
+        headers => MAP {
+          'accept': 'application/json',
+        },
+        params => MAP {
+          'limit': 10
+        }
+    ) AS res
+),
+__response AS (
+  SELECT
+    (res->>'status')::INT AS status,
+    (res->>'reason') AS reason,
+    unnest( from_json(((res->>'body')::JSON)->'form', '{"limit": "VARCHAR"}') ) AS features
+  FROM
+    __input
+)
+SELECT
+  __response.status,
+  __response.reason,
+  __response.limit AS limit
+FROM
+  __response
+;
+----
+200	OK	10
+

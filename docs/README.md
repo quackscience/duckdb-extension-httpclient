@@ -14,6 +14,9 @@ LOAD http_client;
 ### Functions
 - `http_get(url)`
 - `http_post(url, headers, params)`
+  - Sends POST request with params encoded as a JSON object
+- `http_post_form(url, headers, params)`
+  - Sends POST request with params being `application/x-www-form-urlencoded` encoded (used by many forms and some APIs)
 
 ### Examples
 #### GET
@@ -82,6 +85,44 @@ D WITH __input AS (
 │    200 │ OK      │ httpbin.org │
 └────────┴─────────┴─────────────┘
 ```
+
+#### POST using form encoding(application/x-www-form-urlencoded, not multipart/form-data)
+```sql
+D WITH __input AS (
+  SELECT
+    http_post_form(
+        'https://httpbin.org/delay/0',
+        headers => MAP {
+          'accept': 'application/json',
+        },
+        params => MAP {
+          'limit': 10
+        }
+    ) AS res
+),
+__response AS (
+  SELECT
+    (res->>'status')::INT AS status,
+    (res->>'reason') AS reason,
+    unnest( from_json(((res->>'body')::JSON)->'form', '{"limit": "VARCHAR"}') ) AS features
+  FROM
+    __input
+)
+SELECT
+  __response.status,
+  __response.reason,
+  __response.limit AS limit
+FROM
+  __response
+;
+┌────────┬─────────┬─────────┐
+│ status │ reason  │  limit  │
+│ int32  │ varchar │ varchar │
+├────────┼─────────┼─────────┤
+│    200 │ OK      │ 10      │
+└────────┴─────────┴─────────┘
+```
+
 
 #### Full Example w/ spatial data
 This is the original example by @ahuarte47 inspiring this community extension.
