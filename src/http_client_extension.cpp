@@ -261,6 +261,46 @@ static void HTTPPostRequestFunction(DataChunk &args, ExpressionState &state, Vec
         });
 }
 
+static void HTTPPostFormRequestFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    D_ASSERT(args.data.size() == 3);
+
+    using STRING_TYPE = PrimitiveType<string_t>;
+    using LENTRY_TYPE = PrimitiveType<list_entry_t>;
+
+    auto &url_vector = args.data[0];
+    auto &headers_vector = args.data[1];
+    auto &headers_entry = ListVector::GetEntry(headers_vector);
+    auto &body_vector = args.data[2];
+    auto &body_entry = ListVector::GetEntry(body_vector);
+
+    GenericExecutor::ExecuteTernary<STRING_TYPE, LENTRY_TYPE, LENTRY_TYPE, STRING_TYPE>(
+        url_vector, headers_vector, body_vector, result, args.size(),
+        [&](STRING_TYPE url, LENTRY_TYPE headers, LENTRY_TYPE params) {
+            std::string url_str = url.val.GetString();
+
+            // Use helper to setup client and parse URL
+            auto client_and_path = SetupHttpClient(url_str);
+            auto &client = client_and_path.first;
+            auto &path = client_and_path.second;
+
+            // Prepare headers and parameters
+            duckdb_httplib_openssl::Headers header_map;
+            duckdb_httplib_openssl::Params params_map;
+            ConvertListEntryToMap<duckdb_httplib_openssl::Headers>(headers.val, headers_entry, header_map);
+            ConvertListEntryToMap<duckdb_httplib_openssl::Params>(params.val, body_entry, params_map);
+
+            // Make the POST request with headers and params
+            auto res = client.Post(path.c_str(), header_map, params_map);
+            if (res) {
+                std::string response = GetJsonResponse(res->status, res->reason, res->body);
+                return StringVector::AddString(result, response);
+            } else {
+                std::string response = GetJsonResponse(-1, GetHttpErrorMessage(res, "POST"), "");
+                return StringVector::AddString(result, response);
+            }
+        });
+}
+
 
 static void LoadInternal(DatabaseInstance &instance) {
     ScalarFunctionSet http_get("http_get");
@@ -276,6 +316,13 @@ static void LoadInternal(DatabaseInstance &instance) {
         {LogicalType::VARCHAR, LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR), LogicalType::JSON()},
         LogicalType::JSON(), HTTPPostRequestFunction));
     ExtensionUtil::RegisterFunction(instance, http_post);
+
+    ScalarFunctionSet http_post_form("http_post_form");
+    http_post_form.AddFunction(ScalarFunction(
+        {LogicalType::VARCHAR, LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR),
+            LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)},
+        LogicalType::JSON(), HTTPPostFormRequestFunction));
+    ExtensionUtil::RegisterFunction(instance, http_post_form);
 }
 
 void HttpClientExtension::Load(DuckDB &db) {
