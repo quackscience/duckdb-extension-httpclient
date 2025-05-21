@@ -165,7 +165,6 @@ std::string headers_to_string(const duckdb_httplib_openssl::Headers& headers) {
         const std::string& key = pair.first;
         const std::string& value = pair.second;
 
-        // Convert ci string to regular string by converting to lowercase in-place
         std::string lower_key = key;
         std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(),
                        [](unsigned char c){ return std::tolower(c); });
@@ -193,7 +192,7 @@ static void HTTPHeadRequestFunction(DataChunk &args, ExpressionState &state, Vec
         auto &client = client_and_path.first;
         auto &path = client_and_path.second;
 
-        // Make the GET request
+        // Make the HEAD request
         auto res = client.Head(path.c_str());
         if (res) {
             auto headers = headers_to_string(res->headers);
