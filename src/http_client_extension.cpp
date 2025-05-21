@@ -161,7 +161,10 @@ static int ConvertListEntryToMap(const list_entry_t& list_entry, const duckdb::V
 std::string headers_to_string(const duckdb_httplib_openssl::Headers& headers) {
     std::string result = "{";
 
-    for (const auto& [key, value] : headers) {
+    for (const auto& pair : headers) {
+        const std::string& key = pair.first;
+        const std::string& value = pair.second;
+
         // Convert ci string to regular string by converting to lowercase in-place
         std::string lower_key = key;
         std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(),
@@ -192,8 +195,8 @@ static void HTTPHeadRequestFunction(DataChunk &args, ExpressionState &state, Vec
 
         // Make the GET request
         auto res = client.Head(path.c_str());
-        auto headers = headers_to_string(res->headers);
         if (res) {
+            auto headers = headers_to_string(res->headers);
             std::string response = StringUtil::Format(
                 "{ \"status\": %i, \"reason\": \"%s\", \"headers\": \"%s\" }",
                 res->status,
