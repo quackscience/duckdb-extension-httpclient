@@ -199,3 +199,28 @@ FROM
 ----
 200	OK	10
 
+# Confirm the HEAD function works
+query III
+WITH __input AS (
+  SELECT
+    http_head(
+        'https://httpbin.org/delay/0'
+    ) AS res
+),
+__response AS (
+  SELECT
+    (res->>'status')::INT AS status,
+    (res->>'reason') AS reason,
+    unnest( from_json(((res->>'headers')::JSON), '{"connection": "VARCHAR"}') ) AS features
+  FROM
+    __input
+)
+SELECT
+  __response.status,
+  __response.reason,
+  __response.connection AS connection
+FROM
+  __response
+;
+----
+200	OK	close
