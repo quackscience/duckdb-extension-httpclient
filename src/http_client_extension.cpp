@@ -156,6 +156,63 @@ static int ConvertListEntryToMap(const list_entry_t& list_entry, const duckdb::V
     return result.size();
 }
 
+
+
+std::string headers_to_string(const duckdb_httplib_openssl::Headers& headers) {
+    std::string result = "{";
+
+    for (const auto& pair : headers) {
+        const std::string& key = pair.first;
+        const std::string& value = pair.second;
+
+        std::string lower_key = key;
+        std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+
+        result += "\"" + escape_json(lower_key) + "\":\"" + escape_json(value) + "\",";
+    }
+
+    if (result.length() > 1) {
+        result.pop_back(); // Remove trailing comma
+    }
+    result += "}";
+
+    return result;
+}
+
+
+static void HTTPHeadRequestFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    D_ASSERT(args.data.size() == 1);
+
+    UnaryExecutor::Execute<string_t, string_t>(args.data[0], result, args.size(), [&](string_t input) {
+        std::string url = input.GetString();
+
+        // Use helper to setup client and parse URL
+        auto client_and_path = SetupHttpClient(url);
+        auto &client = client_and_path.first;
+        auto &path = client_and_path.second;
+
+        // Make the HEAD request
+        auto res = client.Head(path.c_str());
+        if (res) {
+            auto headers = headers_to_string(res->headers);
+            std::string response = StringUtil::Format(
+                "{ \"status\": %i, \"reason\": \"%s\", \"headers\": \"%s\" }",
+                res->status,
+                escape_json(res->reason),
+                escape_json(headers)
+            );
+            return StringVector::AddString(result, response);
+        } else {
+            std::string response = StringUtil::Format(
+                "{ \"status\": %i, \"reason\": \"%s\", \"headers\": \"%s\" }",
+                -1, GetHttpErrorMessage(res, "HEAD"), ""
+            );
+            return StringVector::AddString(result, response);
+        }
+    });
+}
+
 static void HTTPGetRequestFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     D_ASSERT(args.data.size() == 1);
 
@@ -303,6 +360,10 @@ static void HTTPPostFormRequestFunction(DataChunk &args, ExpressionState &state,
 
 
 static void LoadInternal(DatabaseInstance &instance) {
+    ScalarFunctionSet http_head("http_head");
+    http_head.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::JSON(), HTTPHeadRequestFunction));
+    ExtensionUtil::RegisterFunction(instance, http_head);
+
     ScalarFunctionSet http_get("http_get");
     http_get.AddFunction(ScalarFunction({LogicalType::VARCHAR}, LogicalType::JSON(), HTTPGetRequestFunction));
     http_get.AddFunction(ScalarFunction(
@@ -358,4 +419,3 @@ DUCKDB_EXTENSION_API const char *http_client_version() {
 #ifndef DUCKDB_EXTENSION_MAIN
 #error DUCKDB_EXTENSION_MAIN not defined
 #endif
-
